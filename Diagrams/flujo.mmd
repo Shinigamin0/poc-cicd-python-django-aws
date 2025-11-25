@@ -1,0 +1,9 @@
+graph TD
+    A[Push a Bitbucket] --> B[Jenkins en EC2 recibe webhook]
+    B --> C[Clona el repo]
+    C --> D[Lee env.yml y obtiene secretos desde AWS SSM]
+    D --> E[Construye imagen Docker]
+    E --> F[Sube imagen a ECR]
+    F --> G[Crea nueva Task Definition ECS]
+    G --> H[Despliega servicio en ECS con nueva imagen]
+    H --> I[Conecta Task con Target Group en el Load Balancer]

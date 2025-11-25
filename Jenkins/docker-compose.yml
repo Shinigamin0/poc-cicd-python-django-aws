@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  jenkins:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: jenkins_master
+    restart: unless-stopped
+    user: root
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./default-user.groovy:/usr/share/jenkins/ref/init.groovy.d/default-user.groovy
+
+    environment:
+      - JENKINS_ADMIN_USER=${JENKINS_ADMIN_USER}
+      - JENKINS_ADMIN_PASSWORD=${JENKINS_ADMIN_PASSWORD}
+      - JAVA_OPTS=-Duser.timezone=America/Bogota -Xmx2048m -Djenkins.install.runSetupWizard=false
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+volumes:
+  jenkins_home:

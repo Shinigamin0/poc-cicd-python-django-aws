@@ -1,0 +1,33 @@
+flowchart TD
+    Start((Inicio)) --> Args["Leer Argumentos CLI\n(Imagen, VPC, Subnets...)"]
+    Args --> ReadYML["Leer env.yml\n(Mapa de Variables)"]
+    
+    subgraph Red [Gestión de Red]
+        CheckTG{"¿Existe Target Group?"}
+        ReadYML --> CheckTG
+        CheckTG -- No --> CreateTG[Crear Target Group]
+        CheckTG -- Si --> GetTG[Obtener ARN existente]
+        CreateTG --> TG_ARN[TG ARN Listo]
+        GetTG --> TG_ARN
+    end
+
+    subgraph Definicion [Configuración de Tarea]
+        TG_ARN --> LoopVars[Iterar Variables env.yml]
+        LoopVars --> GetSSM[Obtener ARN de SSM Parameter Store]
+        GetSSM --> BuildJSON[Construir Container Definition]
+        BuildJSON --> RegTask[Registrar Nueva Task Definition]
+    end
+
+    subgraph Despliegue [Servicio ECS]
+        RegTask --> CheckSvc{"¿Existe el Servicio ECS?"}
+        CheckSvc -- No --> CreateSvc["Crear Servicio Nuevo\n(Conectar a TG y Cluster)"]
+        CheckSvc -- Si --> UpdateSvc["Actualizar Servicio\n(Force New Deployment)"]
+    end
+
+    CreateSvc --> Fin(((Fin Exitoso)))
+    UpdateSvc --> Fin
+    
+    style Start fill:#f9f,stroke:#333
+    style Fin fill:#9f9,stroke:#333
+    style CheckTG fill:#ff9,stroke:#333
+    style CheckSvc fill:#ff9,stroke:#333

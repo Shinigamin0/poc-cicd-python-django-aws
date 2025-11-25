@@ -1,0 +1,55 @@
+flowchart TD
+    %% CI/CD Server - Jenkins en EC2
+    subgraph CI_CD_Server [EC2 - Jenkins Server]
+        Git[Checkout desde Bitbucket]
+        Docker[Docker Build and Push]
+        EnvFile[Lectura de archivo env.yml]
+        PyScript[Script Python con Boto3]
+    end
+
+    %% AWS Cloud Infraestructura
+    subgraph AWS_Cloud [AWS Cloud]
+        ECR[ECR - Registro de Imagen]
+        SSM[SSM Parameter Store]
+        
+        subgraph Network [Red y Balanceo]
+            ALB[Load Balancer existente]
+            Rules[Listener Rules]
+            TG[Target Group]
+        end
+        
+        subgraph Compute [ECS Fargate Cluster]
+            TaskDef[Task Definition JSON]
+            Service[ECS Service]
+            Container[Contenedor Django]
+        end
+    end
+
+    %% Flujo CI/CD
+    Git -->|Paso 1: Descargar código| Docker
+    Docker -->|Paso 2: Push de Imagen a ECR| ECR
+    Git --> EnvFile
+    EnvFile -->|Paso 3: Cargar variables del YAML| PyScript
+
+    %% Script Boto3
+    PyScript -->|Paso 4: Crear o actualizar TG| TG
+    PyScript -->|Paso 5: Crear o actualizar Listener Rule| Rules
+    ALB --- Rules
+    Rules --> TG
+
+    PyScript -->|Paso 6: Crear Task Definition| TaskDef
+    ECR -.->|Usa la imagen| TaskDef
+    SSM -.->|Inyecta secretos| TaskDef
+
+    PyScript -->|Paso 7: Actualizar ECS Service| Service
+    Service -->|Paso 8: Desplegar contenedor| Container
+
+    %% Conexiones de ejecución
+    TaskDef -->|Configura el contenedor| Container
+    TG -->|Paso 9: Tráfico HTTP al contenedor| Container
+    SSM -->|Paso 10: Variables de entorno en runtime| Container
+
+    %% Estilos personalizados
+    style PyScript fill:#f9f,stroke:#333,stroke-width:2px,color:black
+    style SSM fill:#ff9,stroke:#f66,stroke-width:2px,color:black
+    style TG fill:#bbf,stroke:#333,stroke-width:1px,color:black

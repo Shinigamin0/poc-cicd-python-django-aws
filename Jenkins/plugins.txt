@@ -1,0 +1,14 @@
+# plugins.txt
+workflow-aggregator
+git
+docker-workflow
+blueocean
+amazon-ecr
+pipeline-aws
+credentials-binding
+timestamper
+ws-cleanup
+bitbucket
+aws-credentials
+credentials
+pipeline-stage-view

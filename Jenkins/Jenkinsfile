@@ -1,0 +1,105 @@
+pipeline {
+    agent any
+
+    environment {
+        // --- CONFIGURACIÓN DEL PROYECTO ---
+        AWS_REGION      = 'us-east-1'          // Cambia a tu región (ej. us-east-1)
+        ECR_REPO_NAME   = 'mi-django-app'      // Nombre del repo en ECR (créalo antes en AWS o añade paso para crearlo)
+        ECS_CLUSTER     = 'mi-cluster-ecs'     // Nombre de tu cluster ECS
+        PROJECT_NAME    = 'django-universidad' // Prefijo para nombres de recursos
+        
+        // --- INFRAESTRUCTURA DE RED (Requerido para ECS Fargate) ---
+        // Reemplaza estos valores con los IDs de tu VPC real
+        VPC_ID          = 'vpc-xxxxxxxx'       
+        // Las subnets deben ser comas sin espacios: "subnet-a,subnet-b"
+        SUBNETS         = 'subnet-xxxxxx1,subnet-xxxxxx2' 
+        // Grupo de seguridad para los contenedores (puerto 8000 abierto)
+        SECURITY_GROUPS = 'sg-xxxxxxxx'        
+
+        // --- VARIABLES CALCULADAS ---
+        // Generamos un tag único basado en el número de Build y el hash corto de Git
+        IMAGE_TAG       = "${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(7)}"
+        AWS_ACCOUNT_ID  = "" // Se llenará dinámicamente
+    }
+
+    stages {
+        
+        stage('0. Init & Checks') {
+            steps {
+                script {
+                    // Obtener ID de cuenta AWS dinámicamente
+                    env.AWS_ACCOUNT_ID = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
+                    echo "Desplegando en cuenta: ${env.AWS_ACCOUNT_ID} - Región: ${env.AWS_REGION}"
+                }
+            }
+        }
+
+        stage('1. Checkout Code') {
+            steps {
+                // Descarga el código desde Bitbucket
+                checkout scm
+            }
+        }
+
+        stage('2. Build Docker Image') {
+            steps {
+                script {
+                    echo "Construyendo imagen: ${ECR_REPO_NAME}:${IMAGE_TAG}"
+                    // Construye la imagen usando el Dockerfile del repo
+                    sh "docker build -t ${ECR_REPO_NAME}:${IMAGE_TAG} ."
+                }
+            }
+        }
+
+        stage('3. Push to ECR') {
+            steps {
+                script {
+                    def ecrUrl = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+                    def fullImageName = "${ecrUrl}/${ECR_REPO_NAME}:${IMAGE_TAG}"
+
+                    echo "Logueando en ECR..."
+                    sh "aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${ecrUrl}"
+
+                    echo "Etiquetando y subiendo imagen..."
+                    sh "docker tag ${ECR_REPO_NAME}:${IMAGE_TAG} ${fullImageName}"
+                    sh "docker push ${fullImageName}"
+                    
+                    // Guardamos la URL completa para usarla en el siguiente paso
+                    env.FULL_IMAGE_URI = fullImageName
+                }
+            }
+        }
+
+        stage('4. Deploy to AWS (Python Logic)') {
+            steps {
+                echo "Iniciando orquestación con Python..."
+                // Aquí llamamos al script deploy.py pasando todos los argumentos
+                sh """
+                    python3 deploy.py \
+                    --image ${env.FULL_IMAGE_URI} \
+                    --env-yml env.yml \
+                    --vpc-id ${VPC_ID} \
+                    --cluster ${ECS_CLUSTER} \
+                    --project ${PROJECT_NAME} \
+                    --subnets ${SUBNETS} \
+                    --security-groups ${SECURITY_GROUPS}
+                """
+            }
+        }
+    }
+
+    post {
+        always {
+            // Limpieza: Borrar imágenes locales para no llenar el disco de la EC2
+            sh "docker rmi ${ECR_REPO_NAME}:${IMAGE_TAG} || true"
+            sh "docker rmi ${env.FULL_IMAGE_URI} || true"
+            cleanWs() // Limpia el espacio de trabajo de Jenkins
+        }
+        success {
+            echo "✅ Despliegue Exitoso"
+        }
+        failure {
+            echo "❌ El Despliegue Falló"
+        }
+    }
+}
