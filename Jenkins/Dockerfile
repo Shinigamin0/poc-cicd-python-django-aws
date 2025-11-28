@@ -1,4 +1,4 @@
-FROM jenkins/jenkins:lts-jdk17
+FROM jenkins/jenkins:lts-jdk21
 
 # Cambiamos a root para instalaciones del sistema
 USER root
@@ -43,3 +43,4 @@ RUN jenkins-plugin-cli -f /usr/share/jenkins/ref/plugins.txt
 
 # Volvemos al usuario jenkins
 USER jenkins
+
